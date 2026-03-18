@@ -1,0 +1,15 @@
+{
+  "name": "Kalkulator nawoz\u00f3w PRO",
+  "short_name": "Nawozy",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#2e7d32",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

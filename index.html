@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalkulator nawozów PRO</title>
+<link rel="manifest" href="manifest.json">
+<style>
+body{font-family:Arial;margin:0;background:#121212;color:#eee;padding:10px;}
+.box{background:#1e1e1e;padding:10px;border-radius:10px;margin:10px 0;}
+input,button{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none;}
+button{background:#2e7d32;color:white;font-size:16px;}
+</style>
+</head>
+<body>
+
+<h2>Kalkulator nawozów PRO 🌿</h2>
+
+<div class="box">
+NO3 <input id="no3" type="number">
+PO4 <input id="po4" type="number">
+K <input id="k" type="number">
+Fe <input id="fe" type="number">
+<button onclick="calc()">Oblicz</button>
+</div>
+
+<div class="box" id="out"></div>
+
+<script>
+let history = JSON.parse(localStorage.getItem("hist")||"[]");
+
+function calc(){
+ let no3 = parseFloat(no3El.value)||0;
+ let po4 = parseFloat(po4El.value)||0;
+ let k = parseFloat(kEl.value)||0;
+ let fe = parseFloat(feEl.value)||0;
+
+ let result = `NO3:${no3} PO4:${po4} K:${k} Fe:${fe}`;
+ document.getElementById("out").innerHTML = result;
+
+ history.push({no3,po4,k,fe});
+ if(history.length>30) history.shift();
+ localStorage.setItem("hist",JSON.stringify(history));
+}
+
+const no3El = document.getElementById("no3");
+const po4El = document.getElementById("po4");
+const kEl = document.getElementById("k");
+const feEl = document.getElementById("fe");
+
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.register('service-worker.js');
+}
+</script>
+
+</body>
+</html>
