@@ -38,6 +38,7 @@ button:hover { background-color: #388e3c; }
 }
 .history-entry .dose { background-color: #2196f3; color: #fff; }
 .history-entry .water { background-color: #ff9800; color: #000; }
+select { background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #444; padding: 5px; }
 @media (max-width: 500px) {
   body { max-width: 95%; }
   input { width: 90%; }
@@ -67,10 +68,223 @@ button:hover { background-color: #388e3c; }
 const tanks = { t1: 240, t2: 130, t3: 72, t4: 26 };
 const effectiveVolumes = { t1: 200, t2: 110, t3: 60, t4: 20 };
 const params = ['no3','po4','k','fe'];
+const techProfiles = {
+    high: { label: 'High Tech', target: { no3: 10, po4: 1, k: 20, fe: 0.4 }, microFactor: 8 },
+    low: { label: 'Low Tech', target: { no3: 5, po4: 0.5, k: 10, fe: 0.1 }, microFactor: 4 }
+};
+
+const customPresets = {
+    t1: {
+        mode: 'high',
+        target: { no3: 15, po4: 1.2, k: 18, fe: 0.10 },
+        waterChange: 70,
+        dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
+        note: 'Dynamiczny plan wg testów przed podmianą i podmiany RO dla 240L.'
+    },
+    t2: {
+        mode: 'low',
+        target: { no3: 5, po4: 0.2, k: 5, fe: 0.02 },
+        waterChange: 45,
+        dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
+        note: 'Dynamiczny super low tech: kalkulator bierze pod uwagę testy przed podmianą i ilość podmienionej wody.'
+    },
+    t3: {
+        mode: 'low',
+        target: { no3: 6, po4: 0.25, k: 8, fe: 0.03 },
+        waterChange: 18,
+        dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
+        note: 'Dynamiczny low tech dla epifitów: dawki liczone z testów przed podmianą i ilości podmienionej wody.'
+    },
+    t4: {
+        mode: 'high',
+        target: { no3: 8, po4: 0.4, k: 10, fe: 0.03 },
+        waterChange: 8,
+        dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
+        note: 'Dynamiczny delikatny start dla młodego 26L: dawki liczone z testów przed podmianą i ilości podmienionej wody.'
+    }
+};
+
+function savePlanState(id, data){
+    localStorage.setItem(id + '_plan_state', JSON.stringify(data));
+}
+
+function loadPlanState(id){
+    try {
+        return JSON.parse(localStorage.getItem(id + '_plan_state') || 'null');
+    } catch(e){
+        return null;
+    }
+}
+
+function saveAllSettings(id){
+    const modeEl = document.getElementById(`tech_${id}`);
+    const settings = {
+        mode: modeEl ? modeEl.value : 'high',
+        wc: document.getElementById(`wc_${id}`)?.value || '',
+        strengths: {},
+        targets: {},
+        measured: {}
+    };
+    params.forEach(p=>{
+        settings.strengths[p] = document.getElementById(`s${p}_${id}`)?.value || '';
+        settings.targets[p] = document.getElementById(`t${p}_${id}`)?.value || '';
+        settings.measured[p] = document.getElementById(`${p}_${id}`)?.value || '';
+    });
+    localStorage.setItem(id + '_settings', JSON.stringify(settings));
+}
+
+function loadAllSettings(id){
+    try {
+        const settings = JSON.parse(localStorage.getItem(id + '_settings') || 'null');
+        if(!settings) return false;
+
+        const modeEl = document.getElementById(`tech_${id}`);
+        if(modeEl && settings.mode) modeEl.value = settings.mode;
+        if(settings.wc !== undefined && document.getElementById(`wc_${id}`)) document.getElementById(`wc_${id}`).value = settings.wc;
+
+        params.forEach(p=>{
+            const sEl = document.getElementById(`s${p}_${id}`);
+            const tEl = document.getElementById(`t${p}_${id}`);
+            const mEl = document.getElementById(`${p}_${id}`);
+            if(sEl && settings.strengths && settings.strengths[p] !== undefined) sEl.value = settings.strengths[p];
+            if(tEl && settings.targets && settings.targets[p] !== undefined){
+                tEl.value = settings.targets[p];
+                tEl.dataset.manual = '1';
+            }
+            if(mEl && settings.measured && settings.measured[p] !== undefined) mEl.value = settings.measured[p];
+        });
+        return true;
+    } catch(e){
+        return false;
+    }
+}
+
+function restorePlanView(id){
+    const state = loadPlanState(id);
+    if(state && state.html && document.getElementById(`out_${id}`)){
+        document.getElementById(`out_${id}`).innerHTML = state.html;
+    }
+    const status = document.getElementById(`plan_status_${id}`);
+    if(status && state && state.status){
+        status.textContent = state.status;
+    }
+}
+
+
+
+function captureOriginalDefaults(id){
+    params.forEach(p=>{
+        const tEl = document.getElementById(`t${p}_${id}`);
+        const sEl = document.getElementById(`s${p}_${id}`);
+        const mEl = document.getElementById(`${p}_${id}`);
+        if(tEl && !tEl.dataset.original) tEl.dataset.original = tEl.value;
+        if(sEl && !sEl.dataset.original) sEl.dataset.original = sEl.value;
+        if(mEl && !mEl.dataset.original) mEl.dataset.original = '';
+    });
+    const wcEl = document.getElementById(`wc_${id}`);
+    if(wcEl && !wcEl.dataset.original) wcEl.dataset.original = '';
+    const modeEl = document.getElementById(`tech_${id}`);
+    if(modeEl && !modeEl.dataset.original) modeEl.dataset.original = modeEl.value || 'high';
+}
+
+function resetToOptimalSettings(id){
+    const modeEl = document.getElementById(`tech_${id}`);
+    if(modeEl){
+        modeEl.value = modeEl.dataset.original || 'high';
+    }
+
+    params.forEach(p=>{
+        const tEl = document.getElementById(`t${p}_${id}`);
+        const sEl = document.getElementById(`s${p}_${id}`);
+        const mEl = document.getElementById(`${p}_${id}`);
+
+        if(tEl){
+            tEl.value = tEl.dataset.original ?? tEl.defaultValue ?? '';
+            tEl.dataset.manual = '0';
+        }
+        if(sEl){
+            sEl.value = sEl.dataset.original ?? sEl.defaultValue ?? '';
+        }
+        if(mEl){
+            mEl.value = mEl.dataset.original ?? '';
+            mEl.className = '';
+        }
+    });
+
+    const wcEl = document.getElementById(`wc_${id}`);
+    if(wcEl){
+        wcEl.value = wcEl.dataset.original ?? '';
+    }
+
+    document.getElementById(`out_${id}`).innerHTML = '';
+    applyTechProfile(id, false);
+    updateParamColors(id);
+    saveAllSettings(id);
+    savePlanState(id, { html: '', status: 'Przywrócono ustawienia pierwotne.' });
+
+    const status = document.getElementById(`plan_status_${id}`);
+    if(status) status.textContent = 'Przywrócono ustawienia pierwotne.';
+}
+
+function applyTechProfile(id, preserveManual = false){
+    const mode = document.getElementById(`tech_${id}`)?.value || 'high';
+    const profile = techProfiles[mode] || techProfiles.high;
+    params.forEach(p=>{
+        const input = document.getElementById(`t${p}_${id}`);
+        if(!input) return;
+        if(!preserveManual || input.dataset.manual !== '1'){
+            input.value = profile.target[p];
+        }
+    });
+    const microInfo = document.getElementById(`microinfo_${id}`);
+    if(microInfo) microInfo.textContent = `${profile.microFactor} kropli/dzień na 100L`;
+    updateParamColors(id);
+}
+
+
+function applySuggestedWaterChange(id){
+    const preset = customPresets[id];
+    if(!preset || preset.waterChange === undefined) return;
+    const wcEl = document.getElementById(`wc_${id}`);
+    if(wcEl){
+        wcEl.value = preset.waterChange;
+        saveAllSettings(id);
+    }
+}
+
+function applyCustomPreset(id){
+    const preset = customPresets[id];
+    if(!preset) return;
+
+    const modeSelect = document.getElementById(`tech_${id}`);
+    if(modeSelect) modeSelect.value = preset.mode;
+
+    params.forEach(p=>{
+        const input = document.getElementById(`t${p}_${id}`);
+        if(input){
+            input.value = preset.target[p];
+            input.dataset.manual = '1';
+        }
+    });
+
+    applyTechProfile(id, true);
+    updateParamColors(id);
+    saveAllSettings(id);
+
+    const planBox = document.getElementById(`plan_${id}`);
+    if(planBox){
+        planBox.setAttribute('data-active', '1');
+    }
+
+    const status = document.getElementById(`plan_status_${id}`);
+    if(status) status.textContent = 'Plan ustawiony i zapisany.';
+    const prev = loadPlanState(id) || {};
+    savePlanState(id, { html: prev.html || '', status: 'Plan ustawiony i zapisany.' });
+}
 
 function dose(target, current, strength, volume){
     let diff = target - current;
-    if(diff <= 0) return 0;
+    if(diff <= 0 || !strength || strength <= 0) return 0;
     return (diff * volume) / (strength * 10);
 }
 
@@ -101,51 +315,75 @@ function calc(id){
 
     const v = effectiveVolumes[id];
     let wc = parseFloat(document.getElementById(`wc_${id}`).value) || 0;
-    let current = {};
+    wc = Math.max(0, Math.min(wc, v));
+    document.getElementById(`wc_${id}`).value = wc || '';
+
+    let rawCurrent = {};
+    let afterWC = {};
     params.forEach(p=>{
         let val = parseFloat(document.getElementById(`${p}_${id}`).value) || 0;
-        val *= (v - wc)/v;
-        current[p] = val;
+        rawCurrent[p] = val;
+        afterWC[p] = val * (v - wc) / v;
     });
 
     let strength = {};
-    params.forEach(p=>{
-        strength[p] = parseFloat(document.getElementById(`s${p}_${id}`).value) || 0;
-    });
-
     let target = {};
     params.forEach(p=>{
+        strength[p] = parseFloat(document.getElementById(`s${p}_${id}`).value) || 0;
         target[p] = parseFloat(document.getElementById(`t${p}_${id}`).value) || 0;
     });
 
-    let doses = {};
+    const modeEl = document.getElementById(`tech_${id}`);
+    const mode = modeEl ? modeEl.value : 'high';
+    const profile = (typeof techProfiles !== 'undefined' ? techProfiles[mode] : null) || {label:'High Tech', microFactor:8};
+    const preset = (typeof customPresets !== 'undefined') ? customPresets[id] : null;
+
+    let weekly = {}, d1 = {}, d2 = {}, d3 = {}, deficit = {};
+    let microWeekly = profile.microFactor * v / 100;
+    let micro1 = Math.round(microWeekly * 0.34);
+    let micro2 = Math.round(microWeekly * 0.33);
+    let micro3 = Math.round(microWeekly * 0.33);
+
     params.forEach(p=>{
-        doses[p] = dose(target[p], current[p], strength[p], v);
+        weekly[p] = dose(target[p], afterWC[p], strength[p], v);
+        deficit[p] = Math.max(0, target[p] - afterWC[p]);
+        d1[p] = weekly[p] * 0.5;
+        d2[p] = weekly[p] * 0.25;
+        d3[p] = weekly[p] * 0.25;
     });
-    let micro = 8 * v / 100;
+
+    saveAllSettings(id);
 
     let outHTML = '<table>';
-    outHTML += `<tr><td>Dawkowanie dzienne:</td><td></td></tr>`;
-    outHTML += `<tr><td>🧪 NO3:</td><td>${(doses.no3/7).toFixed(2)} ml</td></tr>`;
-    outHTML += `<tr><td>💧 PO4:</td><td>${(doses.po4/7).toFixed(2)} ml</td></tr>`;
-    outHTML += `<tr><td>🌿 K:</td><td>${(doses.k/7).toFixed(2)} ml</td></tr>`;
-    outHTML += `<tr><td>🔩 Fe:</td><td>${(doses.fe/7).toFixed(2)} ml</td></tr>`;
-    outHTML += `<tr><td>💊 AF Micro:</td><td>${micro.toFixed(2)} kropli</td></tr>`;
+    outHTML += `<tr><td>Tryb nawożenia:</td><td>${profile.label}</td></tr>`;
+    outHTML += `<tr><td colspan="2"><b>Plan 3x w tygodniu wg testów i podmiany</b></td></tr>`;
+    outHTML += `<tr><td colspan="2" style="font-size:12px;color:#aaa;">Testy robisz przed podmianą, dawka sobotnia jest liczona po podmianie RO.</td></tr>`;
+    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>1. Stan przed podmianą</b></td></tr>`;
+    outHTML += `<tr><td>Testy:</td><td>NO3 ${rawCurrent.no3.toFixed(2)}, PO4 ${rawCurrent.po4.toFixed(2)}, K ${rawCurrent.k.toFixed(2)}, Fe ${rawCurrent.fe.toFixed(2)} mg/l</td></tr>`;
+    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>2. Stan po podmianie RO</b></td></tr>`;
+    outHTML += `<tr><td>Po podmianie:</td><td>NO3 ${afterWC.no3.toFixed(2)}, PO4 ${afterWC.po4.toFixed(2)}, K ${afterWC.k.toFixed(2)}, Fe ${afterWC.fe.toFixed(2)} mg/l</td></tr>`;
+    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>3. Brak do celu</b></td></tr>`;
+    outHTML += `<tr><td>Do uzupełnienia:</td><td>NO3 ${deficit.no3.toFixed(2)}, PO4 ${deficit.po4.toFixed(2)}, K ${deficit.k.toFixed(2)}, Fe ${deficit.fe.toFixed(2)} mg/l</td></tr>`;
+    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>4. Z tego wynika plan 3x w tygodniu</b></td></tr>`;
+    outHTML += `<tr><td><b>Sobota po podmianie</b></td><td>N ${d1.no3.toFixed(2)} ml • PO4 ${d1.po4.toFixed(2)} ml • K ${d1.k.toFixed(2)} ml • Fe ${d1.fe.toFixed(2)} ml • Micro ${micro1} kropli</td></tr>`;
+    outHTML += `<tr><td><b>Wtorek</b></td><td>N ${d2.no3.toFixed(2)} ml • PO4 ${d2.po4.toFixed(2)} ml • K ${d2.k.toFixed(2)} ml • Fe ${d2.fe.toFixed(2)} ml • Micro ${micro2} kropli</td></tr>`;
+    outHTML += `<tr><td><b>Czwartek</b></td><td>N ${d3.no3.toFixed(2)} ml • PO4 ${d3.po4.toFixed(2)} ml • K ${d3.k.toFixed(2)} ml • Fe ${d3.fe.toFixed(2)} ml • Micro ${micro3} kropli</td></tr>`;
+    outHTML += `<tr><td>Razem tydzień:</td><td>N ${weekly.no3.toFixed(2)} ml • PO4 ${weekly.po4.toFixed(2)} ml • K ${weekly.k.toFixed(2)} ml • Fe ${weekly.fe.toFixed(2)} ml • Micro ${microWeekly.toFixed(0)} kropli</td></tr>`;
+    outHTML += '<tr><td colspan="2" style="font-size:12px;color:#aaa;padding-top:8px;">Podział dawek: 50% sobota po podmianie, 25% wtorek, 25% czwartek.</td></tr>';
+    if(preset && preset.note){
+        outHTML += `<tr><td colspan="2" style="font-size:12px;color:#aaa;padding-top:8px;">${preset.note}</td></tr>`;
+    }
     outHTML += '</table>';
     document.getElementById(`out_${id}`).innerHTML = outHTML;
+    savePlanState(id, { html: outHTML, status: (document.getElementById(`plan_status_${id}`)?.textContent || '') });
 
     let history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
     const now = new Date();
     const datetime = now.toLocaleDateString('pl-PL') + ' ' + now.toLocaleTimeString('pl-PL', {hour:'2-digit',minute:'2-digit'});
     history.push({
-        datetime,
-        wc,
-        ...current,
-        d_no3:(doses.no3/7).toFixed(2),
-        d_po4:(doses.po4/7).toFixed(2),
-        d_k:(doses.k/7).toFixed(2),
-        d_fe:(doses.fe/7).toFixed(2),
-        micro: micro.toFixed(2)
+        datetime, wc, raw: rawCurrent, adjusted: afterWC, target, mode,
+        plan3x: {d1, d2, d3, micro1, micro2, micro3, weekly},
+        micro: microWeekly.toFixed(0)
     });
     if(history.length>30) history.shift();
     localStorage.setItem(id+'_history', JSON.stringify(history));
@@ -158,32 +396,19 @@ function renderHistory(id){
     const history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
     let html = '<b>Historia 30 dni:</b><br>';
     history.slice().reverse().forEach(h=>{
+        const raw = h.raw || {
+            no3: h.no3 ?? 0,
+            po4: h.po4 ?? 0,
+            k: h.k ?? 0,
+            fe: h.fe ?? 0
+        };
+
         html += `<div class="history-entry"><b>${h.datetime}</b>`;
-        html += `<table><tr><th>Parametr</th><th>Wartość</th><th>Dawki dzienne</th><th>Woda</th></tr>`;
-
-        params.forEach(p=>{
-            let val = h[p];
-            let target = parseFloat(document.getElementById(`t${p}_${id}`).value) || 0;
-            let icon = '✅';
-            let cls = 'correct';
-            if(val < target*0.95) { icon = '⚠️'; cls='low'; }
-            else if(val > target*1.1) { icon = '❌'; cls='high'; }
-            if((p==='fe' && val>1) || (p==='k' && val>50)) { icon='⚠️'; cls='warning'; }
-            let doseVal = h['d_'+p];
-            let waterHTML = '';
-            if(p==='no3' && h.wc>0){
-                waterHTML = `<span class="water">${h.wc} l</span>`;
-            }
-
-            html += `<tr>
-                <td>${icon} ${p.toUpperCase()}</td>
-                <td class="param-value ${cls}">${val}</td>
-                <td><span class="dose">${doseVal} ml</span></td>
-                <td>${waterHTML}</td>
-            </tr>`;
-        });
-
-        html += `<tr><td>💊 Micro</td><td>–</td><td><span class="dose">${h.micro} kropli</span></td><td></td></tr>`;
+        html += `<table><tr><th>Parametr</th><th>Wynik badanej wody</th><th>Podmiana</th></tr>`;
+        html += `<tr><td>🧪 NO3</td><td>${Number(raw.no3 ?? 0).toFixed(2)} mg/l</td><td>${h.wc ? `${h.wc} l` : '–'}</td></tr>`;
+        html += `<tr><td>💧 PO4</td><td>${Number(raw.po4 ?? 0).toFixed(2)} mg/l</td><td></td></tr>`;
+        html += `<tr><td>🌿 K</td><td>${Number(raw.k ?? 0).toFixed(2)} mg/l</td><td></td></tr>`;
+        html += `<tr><td>🔩 Fe</td><td>${Number(raw.fe ?? 0).toFixed(2)} mg/l</td><td></td></tr>`;
         html += `</table></div>`;
     });
     const div = document.getElementById(`history_${id}`);
@@ -196,6 +421,8 @@ function clearResults(id){
     document.getElementById(`wc_${id}`).value='';
     updateParamColors(id);
     document.getElementById(`out_${id}`).innerHTML='';
+    saveAllSettings(id);
+    savePlanState(id, { html: '', status: (document.getElementById(`plan_status_${id}`)?.textContent || '') });
 }
 function clearHistory(id){
     localStorage.removeItem(id+'_history');
@@ -209,12 +436,18 @@ function showTab(id){
 
 function createTankUI(id, volume){
     document.getElementById(id).innerHTML=`
-    <h3>${volume}L</h3>
+    <h3>${volume}L (${effectiveVolumes[id]}L netto)</h3>
     <div class="box">
     <table>
       <tr>
         <td>Podmiana:</td>
-        <td><input id="wc_${id}" type="number" title="Ilość wody podmienionej w litrach"> l</td>
+        <td>
+          <input id="wc_${id}" type="number" title="Ilość wody podmienionej w litrach" oninput="saveAllSettings('${id}')"> l
+          ${customPresets[id] && customPresets[id].waterChange !== undefined ? `
+            <span style="display:inline-block;margin-left:10px;color:#aaa;">Sugerowana: ${customPresets[id].waterChange} l</span>
+            <button onclick="applySuggestedWaterChange('${id}')" style="padding:4px 8px;margin-left:8px;">Ustaw</button>
+          ` : ``}
+        </td>
       </tr>
     </table>
     </div>
@@ -222,32 +455,66 @@ function createTankUI(id, volume){
     <b>Parametry (mg/l)</b><br>
     <p style="font-size:12px;color:#aaa;">Wprowadź parametry przed podmianą wody</p>
     <table>
-      <tr><td>🧪 NO3:</td><td><input id="no3_${id}" type="number" step="0.1" oninput="updateParamColors('${id}')"> mg/l</td></tr>
-      <tr><td>💧 PO4:</td><td><input id="po4_${id}" type="number" step="0.1" oninput="updateParamColors('${id}')"> mg/l</td></tr>
-      <tr><td>🌿 K:</td><td><input id="k_${id}" type="number" step="0.1" oninput="updateParamColors('${id}')"> mg/l</td></tr>
-      <tr><td>🔩 Fe:</td><td><input id="fe_${id}" type="number" step="0.01" oninput="updateParamColors('${id}')"> mg/l</td></tr>
+      <tr><td>🧪 NO3:</td><td><input id="no3_${id}" type="number" step="0.1" oninput="updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>💧 PO4:</td><td><input id="po4_${id}" type="number" step="0.1" oninput="updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>🌿 K:</td><td><input id="k_${id}" type="number" step="0.1" oninput="updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>🔩 Fe:</td><td><input id="fe_${id}" type="number" step="0.01" oninput="updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
     </table>
     <button onclick="clearResults('${id}')">Wyczyść parametry</button>
     </div>
     <div class="box">
+    <b>Tryb nawożenia</b>
+    <table>
+      <tr>
+        <td>Profil:</td>
+        <td>
+          <select id="tech_${id}" onchange="applyTechProfile('${id}'); saveAllSettings('${id}')" style="margin: 5px; background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #444; padding: 5px; border-radius: 4px;">
+            <option value="high">High Tech</option>
+            <option value="low">Low Tech</option>
+          </select>
+        </td>
+      </tr>
+    </table>
+    <p style="font-size:12px;color:#aaa;">Profil ustawia domyślne wartości docelowe. Nadal możesz je zmienić ręcznie.</p>
+    </div>
+    <div class="box">
     <b>Moc nawozów (mg/l)</b> <p style="font-size:12px;color:#aaa;">Wartości dla 10ml nawozu na 100L wody</p>
     <table style="text-align:left;">
-      <tr><td>🧪 AF N Boost:</td><td><input id="sno3_${id}" value="9.5"> mg/l</td></tr>
+      <tr><td>🧪 AF N Boost:</td><td><input id="sno3_${id}" value="9.5" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
       <tr><td>💧 AF PO4 Boost:</td><td><input id="spo4_${id}" value="0.4"> mg/l</td></tr>
-      <tr><td>🌿 AF K Boost:</td><td><input id="sk_${id}" value="5"> mg/l</td></tr>
-      <tr><td>🔩 AF Iron Boost:</td><td><input id="sfe_${id}" value="0.4"> mg/l</td></tr>
-      <tr><td>💊 AF Micro:</td><td>8 kropli/dzień</td></tr>
+      <tr><td>🌿 AF K Boost:</td><td><input id="sk_${id}" value="5" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>🔩 AF Iron Boost:</td><td><input id="sfe_${id}" value="0.4" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>💊 AF Micro:</td><td><span id="microinfo_${id}">8 kropli/dzień na 100L</span></td></tr>
     </table>
     </div>
     <div class="box">
     <b>Docelowe (mg/l)</b>
     <table style="text-align:left;">
-      <tr><td>🧪 NO3:</td><td><input id="tno3_${id}" value="10"> mg/l</td></tr>
-      <tr><td>💧 PO4:</td><td><input id="tpo4_${id}" value="1"> mg/l</td></tr>
-      <tr><td>🌿 K:</td><td><input id="tk_${id}" value="20"> mg/l</td></tr>
-      <tr><td>🔩 Fe:</td><td><input id="tfe_${id}" value="0.4"> mg/l</td></tr>
+      <tr><td>🧪 NO3:</td><td><input id="tno3_${id}" value="10" oninput="this.dataset.manual='1'; updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>💧 PO4:</td><td><input id="tpo4_${id}" value="1" oninput="this.dataset.manual='1'; updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>🌿 K:</td><td><input id="tk_${id}" value="20" oninput="this.dataset.manual='1'; updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
+      <tr><td>🔩 Fe:</td><td><input id="tfe_${id}" value="0.4" oninput="this.dataset.manual='1'; updateParamColors('${id}'); saveAllSettings('${id}')"> mg/l</td></tr>
     </table>
-    </div>
+    </div>    ${['t1','t2','t3','t4'].includes(id) ? `<div class="box" id="plan_${id}">
+    <b>Plan nawożenia dla tego akwarium</b><br>
+    <span style="color:#aaa;">${
+        id === 't1' ? 'High tech z CO2 i aktywnym podłożem.' :
+        id === 't2' ? 'Super low tech z dużą obsadą i bardzo oszczędnym nawożeniem.' :
+        id === 't3' ? 'Low tech na epifitach, bez CO2, z bardzo lekkim nawożeniem.' :
+        'Młode akwarium na aktywnym podłożu, wymagające delikatnego startu.'
+    }</span><br>
+    <span style="color:#aaa;">Plan dynamiczny 3x w tygodniu.</span><br>
+    <span style="color:#aaa;">${
+        id === 't1' ? 'Docelowe: NO3 15, PO4 1.2, K 18, Fe 0.10' :
+        id === 't2' ? 'Docelowe: NO3 5, PO4 0.2, K 5, Fe 0.02' :
+        id === 't3' ? 'Docelowe: NO3 6, PO4 0.25, K 8, Fe 0.03' :
+        'Docelowe: NO3 8, PO4 0.4, K 10, Fe 0.03'
+    }</span><br>
+    <span style="color:#aaa;">Dawki są liczone z testów wykonanych przed podmianą oraz ilości podmienionej wody.</span><br>
+    <span id="plan_status_${id}" style="font-size:12px;color:#aaa;"></span><br>
+    <button onclick="applyCustomPreset('${id}')">Ustaw ten plan</button>
+    <button onclick="resetToOptimalSettings('${id}')">Powrót do optymalnych ustawień</button>
+    </div>` : ``}
     <button onclick="calc('${id}')">Oblicz</button>
     <button onclick="clearHistory('${id}')">Wyczyść historię</button>
     <div class="result" id="out_${id}"></div>
@@ -255,9 +522,13 @@ function createTankUI(id, volume){
     `;
 }
 
-// Inicjalizacja UI i automatyczne wczytanie historii
 Object.keys(tanks).forEach(id=>{
     createTankUI(id, tanks[id]);
+    captureOriginalDefaults(id);
+    const loaded = loadAllSettings(id);
+    applyTechProfile(id, loaded);
+    updateParamColors(id);
+    restorePlanView(id);
     renderHistory(id);
 });
 </script>
