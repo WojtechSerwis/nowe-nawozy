@@ -4,30 +4,159 @@
 <meta charset="UTF-8">
 <title>Kalkulator nawozów</title>
 <style>
-body { font-family: Arial; max-width: 900px; margin: auto; background-color: #121212; color: #e0e0e0; }
-input { margin: 5px; background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #444; padding: 5px; width: 60px; box-sizing: border-box; direction: ltr; }
-.result, .history-box { margin-top: 20px; font-weight: bold; background: #1e1e1e; padding: 10px; border-radius: 8px; }
-button { background-color: #2e7d32; color: white; border: none; padding: 8px 15px; margin: 5px; cursor: pointer; border-radius: 6px; }
-button:hover { background-color: #388e3c; }
-.tabs button { margin: 5px; }
-.tab { display: none; }
-.active { display: block; }
-.box { background:#1e1e1e; padding:10px; border-radius:8px; margin-top:10px; }
-.low { background-color: #000; color: #fff; padding:2px 4px; border-radius:4px; }
-.correct { background-color: #4caf50; color: #fff; padding:2px 4px; border-radius:4px; }
-.high { background-color: #f44336; color: #fff; padding:2px 4px; border-radius:4px; }
-.warning { color: #ffeb3b; }
-.box table { width: auto; border-collapse: collapse; }
-.box table td { padding: 5px; text-align: left; vertical-align: middle; }
-.box table input { text-align: left; width: 60px; box-sizing: border-box; direction: ltr; }
-.history-entry { border-radius: 6px; padding: 6px; margin-bottom: 8px; background-color: #1b1b1b; font-size: 13px; }
-.history-entry table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-.history-entry td, .history-entry th { padding: 2px 4px; font-size: 12px; border-bottom: 1px solid #333; text-align: center; }
-.history-entry th { background-color: #2e2e2e; }
-.history-entry .param-value.low { background-color: #000; }
-.history-entry .param-value.correct { background-color: #4caf50; color: #fff; }
-.history-entry .param-value.high { background-color: #f44336; color: #fff; }
-.history-entry .param-value.warning { background-color: #ffeb3b; color: #000; }
+body { 
+    font-family: Arial; 
+    max-width: 900px; 
+    margin: auto; 
+    background-color: #121212; 
+    color: #e0e0e0; 
+    padding: 10px;
+}
+
+input { 
+    margin: 5px 0; 
+    background-color: #1e1e1e; 
+    color: #e0e0e0; 
+    border: 1px solid #444; 
+    padding: 5px; 
+    width: 100%; 
+    box-sizing: border-box; 
+    direction: ltr; 
+    border-radius: 4px;
+}
+
+.result, .history-box { 
+    margin-top: 20px; 
+    font-weight: bold; 
+    background: #1e1e1e; 
+    padding: 10px; 
+    border-radius: 8px; 
+    overflow-x: auto;
+}
+
+button { 
+    background-color: #2e7d32; 
+    color: white; 
+    border: none; 
+    padding: 8px 15px; 
+    margin: 5px 0; 
+    cursor: pointer; 
+    border-radius: 6px; 
+    width: 100%; 
+    box-sizing: border-box;
+}
+
+button:hover { 
+    background-color: #388e3c; 
+}
+
+.tabs button { 
+    margin: 5px 0; 
+}
+
+.tab { 
+    display: none; 
+}
+
+.active { 
+    display: block; 
+}
+
+.box { 
+    background: #1e1e1e; 
+    padding: 10px; 
+    border-radius: 8px; 
+    margin-top: 10px; 
+    overflow-x: auto;
+}
+
+.low { 
+    background-color: #000; 
+    color: #fff; 
+    padding: 2px 4px; 
+    border-radius: 4px; 
+}
+
+.correct { 
+    background-color: #4caf50; 
+    color: #fff; 
+    padding: 2px 4px; 
+    border-radius: 4px; 
+}
+
+.high { 
+    background-color: #f44336; 
+    color: #fff; 
+    padding: 2px 4px; 
+    border-radius: 4px; 
+}
+
+.warning { 
+    color: #ffeb3b; 
+}
+
+.box table { 
+    width: 100%; 
+    border-collapse: collapse; 
+}
+
+.box table td { 
+    padding: 5px; 
+    text-align: left; 
+    vertical-align: middle; 
+}
+
+.box table input { 
+    text-align: left; 
+    width: 100%; 
+    box-sizing: border-box; 
+    direction: ltr; 
+}
+
+.history-entry { 
+    border-radius: 6px; 
+    padding: 6px; 
+    margin-bottom: 8px; 
+    background-color: #1b1b1b; 
+    font-size: 13px; 
+}
+
+.history-entry table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-top: 4px; 
+}
+
+.history-entry td, .history-entry th { 
+    padding: 2px 4px; 
+    font-size: 12px; 
+    border-bottom: 1px solid #333; 
+    text-align: center; 
+}
+
+.history-entry th { 
+    background-color: #2e2e2e; 
+}
+
+.history-entry .param-value.low { 
+    background-color: #000; 
+}
+
+.history-entry .param-value.correct { 
+    background-color: #4caf50; 
+    color: #fff; 
+}
+
+.history-entry .param-value.high { 
+    background-color: #f44336; 
+    color: #fff; 
+}
+
+.history-entry .param-value.warning { 
+    background-color: #ffeb3b; 
+    color: #000; 
+}
+
 .history-entry .dose, .history-entry .water {
     display: block;
     margin: 0 auto;
@@ -36,13 +165,25 @@ button:hover { background-color: #388e3c; }
     font-size: 12px;
     text-align: center;
 }
-.history-entry .dose { background-color: #2196f3; color: #fff; }
-.history-entry .water { background-color: #ff9800; color: #000; }
-@media (max-width: 500px) {
-  body { max-width: 95%; }
-  input { width: 90%; }
-  button { width: 90%; }
-  .result, .history-box { display: block; width: 100%; margin-left: 0; }
+
+.history-entry .dose { 
+    background-color: #2196f3; 
+    color: #fff; 
+}
+
+.history-entry .water { 
+    background-color: #ff9800; 
+    color: #000; 
+}
+
+@media (max-width: 700px) {
+  body { max-width: 95%; padding: 5px; }
+  input { width: 100%; }
+  button { width: 100%; }
+  .tabs button { width: 100%; margin: 5px 0; }
+  .result, .history-box { display: block; width: 100%; margin-left: 0; overflow-x: auto; }
+  .box table td { display: block; width: 100%; }
+  .box table tr { display: block; width: 100%; margin-bottom: 5px; }
 }
 </style>
 </head>
