@@ -6,13 +6,17 @@
 <style>
 body { font-family: Arial; max-width: 900px; margin: auto; background-color: #121212; color: #e0e0e0; }
 input { margin: 5px; background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #444; padding: 5px; width: 60px; box-sizing: border-box; direction: ltr; }
-.result, .history-box { margin-top: 20px; font-weight: bold; background: #1e1e1e; padding: 10px; border-radius: 8px; }
-button { background-color: #2e7d32; color: white; border: none; padding: 8px 15px; margin: 5px; cursor: pointer; border-radius: 6px; }
-button:hover { background-color: #388e3c; }
+.result, .history-box { margin-top: 28px; font-weight: bold; background: #181818; padding: 14px; border-radius: 10px; border: 1px solid #2b2b2b; }
+button { background-color: #3a3a3a; color: white; border: none; padding: 8px 15px; margin: 5px; cursor: pointer; border-radius: 6px; }
+button:hover { background-color: #4a4a4a; }
+button.primary-btn { background-color: #2e7d32; }
+button.primary-btn:hover { background-color: #388e3c; }
 .tabs button { margin: 5px; }
 .tab { display: none; }
 .active { display: block; }
-.box { background:#1e1e1e; padding:10px; border-radius:8px; margin-top:10px; }
+.box { background:#1e1e1e; padding:14px; border-radius:10px; margin-top:16px; }
+.box b { display:block; font-size:15px; color:#fff; margin-bottom:8px; }
+.box p { margin-top:4px; margin-bottom:10px; }
 .low { background-color: #000; color: #fff; padding:2px 4px; border-radius:4px; }
 .correct { background-color: #4caf50; color: #fff; padding:2px 4px; border-radius:4px; }
 .high { background-color: #f44336; color: #fff; padding:2px 4px; border-radius:4px; }
@@ -20,7 +24,7 @@ button:hover { background-color: #388e3c; }
 .box table { width: auto; border-collapse: collapse; }
 .box table td { padding: 5px; text-align: left; vertical-align: middle; }
 .box table input { text-align: left; width: 60px; box-sizing: border-box; direction: ltr; }
-.history-entry { border-radius: 6px; padding: 6px; margin-bottom: 8px; background-color: #1b1b1b; font-size: 13px; }
+.history-entry { border-radius: 6px; padding: 8px; margin-bottom: 10px; background-color: #151515; border:1px solid #2a2a2a; font-size: 13px; }
 .history-entry table { width: 100%; border-collapse: collapse; margin-top: 4px; }
 .history-entry td, .history-entry th { padding: 2px 4px; font-size: 12px; border-bottom: 1px solid #333; text-align: center; }
 .history-entry th { background-color: #2e2e2e; }
@@ -38,6 +42,19 @@ button:hover { background-color: #388e3c; }
 }
 .history-entry .dose { background-color: #2196f3; color: #fff; }
 .history-entry .water { background-color: #ff9800; color: #000; }
+.status-bar { margin-top:12px; font-size:12px; color:#aaa; line-height:1.5; }
+.alert-box { margin-top:8px; font-size:12px; color:#ffeb3b; }
+.small-btn { padding:4px 8px; margin-left:8px; }
+.trend-box { margin-top:10px; font-size:12px; color:#aaa; line-height:1.5; }
+.plan-section-title { font-size:13px; color:#fff; font-weight:bold; padding-top:8px; }
+.plan-note { font-size:12px; color:#aaa; }
+.plan-pill { display:inline-block; padding:2px 6px; border-radius:4px; margin:2px 4px 2px 0; font-size:12px; background:#2a2a2a; }
+.plan-day { background:#263238; color:#fff; padding:4px 6px; border-radius:6px; font-weight:bold; }
+.plan-dose { display:inline-block; min-width:72px; padding:2px 6px; border-radius:4px; margin:2px 4px 2px 0; font-size:12px; text-align:center; background:#1f1f1f; }
+.plan-total { font-size:12px; color:#aaa; padding-top:6px; }
+.readable-plan table { border-collapse:separate; border-spacing:0 6px; width:100%; }
+.readable-plan td { vertical-align:top; }
+.readable-plan .label-col { width:170px; color:#ddd; }
 select { background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #444; padding: 5px; }
 @media (max-width: 500px) {
   body { max-width: 95%; }
@@ -242,6 +259,134 @@ function applyTechProfile(id, preserveManual = false){
 }
 
 
+
+
+function getTrendSymbol(curr, prev){
+    if(prev === null || prev === undefined || isNaN(prev)) return '—';
+    if(curr > prev) return '↑';
+    if(curr < prev) return '↓';
+    return '=';
+}
+
+function renderTrendInfo(id){
+    const history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
+    const el = document.getElementById(`trend_${id}`);
+    if(!el) return;
+    if(history.length < 2){
+        el.innerHTML = 'Trend: NO3 — • PO4 — • K — • Fe —';
+        return;
+    }
+    const last = history[history.length - 1];
+    const prev = history[history.length - 2];
+    const lastVals = last.raw || { no3:last.no3, po4:last.po4, k:last.k, fe:last.fe };
+    const prevVals = prev.raw || { no3:prev.no3, po4:prev.po4, k:prev.k, fe:prev.fe };
+    el.innerHTML = `Trend: NO3 ${getTrendSymbol(lastVals.no3, prevVals.no3)} • PO4 ${getTrendSymbol(lastVals.po4, prevVals.po4)} • K ${getTrendSymbol(lastVals.k, prevVals.k)} • Fe ${getTrendSymbol(lastVals.fe, prevVals.fe)}`;
+}
+
+function exportBackup(){
+    const payload = {};
+    Object.keys(tanks).forEach(id=>{
+        payload[id] = {
+            settings: JSON.parse(localStorage.getItem(id+'_settings') || '{}'),
+            history: JSON.parse(localStorage.getItem(id+'_history') || '[]'),
+            plan: JSON.parse(localStorage.getItem(id+'_plan_state') || '{}'),
+            meta: JSON.parse(localStorage.getItem(id+'_meta') || '{}')
+        };
+    });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kalkulator_akwarium_backup.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function importBackup(event){
+    const file = event.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e){
+        try{
+            const payload = JSON.parse(e.target.result);
+            Object.keys(payload).forEach(id=>{
+                if(payload[id].settings) localStorage.setItem(id+'_settings', JSON.stringify(payload[id].settings));
+                if(payload[id].history) localStorage.setItem(id+'_history', JSON.stringify(payload[id].history));
+                if(payload[id].plan) localStorage.setItem(id+'_plan_state', JSON.stringify(payload[id].plan));
+                if(payload[id].meta) localStorage.setItem(id+'_meta', JSON.stringify(payload[id].meta));
+            });
+            location.reload();
+        } catch(err){
+            alert('Nie udało się wczytać kopii zapasowej.');
+        }
+    };
+    reader.readAsText(file);
+}
+
+function updateLastActionInfo(id, type){
+    const now = new Date();
+    const stamp = now.toLocaleDateString('pl-PL') + ' ' + now.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit'});
+    const key = id + '_meta';
+    let meta = {};
+    try { meta = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e){}
+    if(type === 'test') meta.lastTest = stamp;
+    if(type === 'waterchange') meta.lastWaterChange = stamp;
+    localStorage.setItem(key, JSON.stringify(meta));
+    renderMetaInfo(id);
+}
+
+function renderMetaInfo(id){
+    let meta = {};
+    try { meta = JSON.parse(localStorage.getItem(id + '_meta') || '{}'); } catch(e){}
+    const el = document.getElementById(`meta_${id}`);
+    if(!el) return;
+    el.innerHTML = `Ostatni test: ${meta.lastTest || '—'}<br>Ostatnia podmiana: ${meta.lastWaterChange || '—'}`;
+}
+
+function buildAlerts(afterWC, target, wc){
+    const alerts = [];
+    if(wc > 0) alerts.push(`Podmiana ${wc} l została uwzględniona w obliczeniach.`);
+    if(target.k > 0 && afterWC.k > target.k * 1.2) alerts.push('K jest już wysokie — nie zwiększaj go bez potrzeby.');
+    if(target.fe > 0 && afterWC.fe > target.fe * 1.2) alerts.push('Fe jest powyżej celu — uważaj z mikro i Iron Boost.');
+    if(afterWC.po4 < Math.max(0.15, target.po4 * 0.5)) alerts.push('PO4 jest nisko po podmianie.');
+    if(afterWC.no3 < Math.max(3, target.no3 * 0.5)) alerts.push('NO3 jest nisko po podmianie.');
+    return alerts;
+}
+
+function saveMeasurementOnly(id){
+    params.concat(['wc']).forEach(p=>{
+        const el = document.getElementById(`${p}_${id}`);
+        if(el) validateInput(`${p}_${id}`);
+    });
+
+    const wc = parseFloat(document.getElementById(`wc_${id}`).value) || 0;
+    let rawCurrent = {};
+    params.forEach(p=>{
+        rawCurrent[p] = parseFloat(document.getElementById(`${p}_${id}`).value) || 0;
+    });
+
+    let history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
+    const now = new Date();
+    const datetime = now.toLocaleDateString('pl-PL') + ' ' + now.toLocaleTimeString('pl-PL', {hour:'2-digit',minute:'2-digit'});
+    history.push({ datetime, wc, raw: rawCurrent });
+    if(history.length>30) history.shift();
+    localStorage.setItem(id+'_history', JSON.stringify(history));
+    saveAllSettings(id);
+    updateLastActionInfo(id, 'test');
+    if(wc > 0) updateLastActionInfo(id, 'waterchange');
+    renderHistory(id);
+    renderTrendInfo(id);
+
+    const out = document.getElementById(`out_${id}`);
+    if(out){
+        out.innerHTML = `<table>
+            <tr><td colspan="2"><b>Zapisano sam pomiar</b></td></tr>
+            <tr><td>Testy:</td><td>NO3 ${rawCurrent.no3.toFixed(2)}, PO4 ${rawCurrent.po4.toFixed(2)}, K ${rawCurrent.k.toFixed(2)}, Fe ${rawCurrent.fe.toFixed(2)} mg/l</td></tr>
+            <tr><td>Podmiana:</td><td>${wc ? wc + ' l' : '—'}</td></tr>
+        </table>`;
+        savePlanState(id, { html: out.innerHTML, status: (document.getElementById(`plan_status_${id}`)?.textContent || '') });
+    }
+}
+
 function applySuggestedWaterChange(id){
     const preset = customPresets[id];
     if(!preset || preset.waterChange === undefined) return;
@@ -353,28 +498,76 @@ function calc(id){
     });
 
     saveAllSettings(id);
+    const alerts = buildAlerts(afterWC, target, wc);
 
-    let outHTML = '<table>';
-    outHTML += `<tr><td>Tryb nawożenia:</td><td>${profile.label}</td></tr>`;
-    outHTML += `<tr><td colspan="2"><b>Plan 3x w tygodniu wg testów i podmiany</b></td></tr>`;
-    outHTML += `<tr><td colspan="2" style="font-size:12px;color:#aaa;">Testy robisz przed podmianą, dawka sobotnia jest liczona po podmianie RO.</td></tr>`;
-    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>1. Stan przed podmianą</b></td></tr>`;
-    outHTML += `<tr><td>Testy:</td><td>NO3 ${rawCurrent.no3.toFixed(2)}, PO4 ${rawCurrent.po4.toFixed(2)}, K ${rawCurrent.k.toFixed(2)}, Fe ${rawCurrent.fe.toFixed(2)} mg/l</td></tr>`;
-    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>2. Stan po podmianie RO</b></td></tr>`;
-    outHTML += `<tr><td>Po podmianie:</td><td>NO3 ${afterWC.no3.toFixed(2)}, PO4 ${afterWC.po4.toFixed(2)}, K ${afterWC.k.toFixed(2)}, Fe ${afterWC.fe.toFixed(2)} mg/l</td></tr>`;
-    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>3. Brak do celu</b></td></tr>`;
-    outHTML += `<tr><td>Do uzupełnienia:</td><td>NO3 ${deficit.no3.toFixed(2)}, PO4 ${deficit.po4.toFixed(2)}, K ${deficit.k.toFixed(2)}, Fe ${deficit.fe.toFixed(2)} mg/l</td></tr>`;
-    outHTML += `<tr><td colspan="2" style="padding-top:8px;"><b>4. Z tego wynika plan 3x w tygodniu</b></td></tr>`;
-    outHTML += `<tr><td><b>Sobota po podmianie</b></td><td>N ${d1.no3.toFixed(2)} ml • PO4 ${d1.po4.toFixed(2)} ml • K ${d1.k.toFixed(2)} ml • Fe ${d1.fe.toFixed(2)} ml • Micro ${micro1} kropli</td></tr>`;
-    outHTML += `<tr><td><b>Wtorek</b></td><td>N ${d2.no3.toFixed(2)} ml • PO4 ${d2.po4.toFixed(2)} ml • K ${d2.k.toFixed(2)} ml • Fe ${d2.fe.toFixed(2)} ml • Micro ${micro2} kropli</td></tr>`;
-    outHTML += `<tr><td><b>Czwartek</b></td><td>N ${d3.no3.toFixed(2)} ml • PO4 ${d3.po4.toFixed(2)} ml • K ${d3.k.toFixed(2)} ml • Fe ${d3.fe.toFixed(2)} ml • Micro ${micro3} kropli</td></tr>`;
-    outHTML += `<tr><td>Razem tydzień:</td><td>N ${weekly.no3.toFixed(2)} ml • PO4 ${weekly.po4.toFixed(2)} ml • K ${weekly.k.toFixed(2)} ml • Fe ${weekly.fe.toFixed(2)} ml • Micro ${microWeekly.toFixed(0)} kropli</td></tr>`;
-    outHTML += '<tr><td colspan="2" style="font-size:12px;color:#aaa;padding-top:8px;">Podział dawek: 50% sobota po podmianie, 25% wtorek, 25% czwartek.</td></tr>';
-    if(preset && preset.note){
-        outHTML += `<tr><td colspan="2" style="font-size:12px;color:#aaa;padding-top:8px;">${preset.note}</td></tr>`;
+    let outHTML = '<div class="readable-plan"><table>';
+    outHTML += `<tr><td class="label-col">Tryb nawożenia</td><td><span class="plan-pill">${profile.label}</span></td></tr>`;
+    outHTML += `<tr><td colspan="2" class="plan-section-title">Plan 3x w tygodniu wg testów i podmiany</td></tr>`;
+    outHTML += `<tr><td colspan="2" class="plan-note">Testy robisz przed podmianą, dawka sobotnia jest liczona po podmianie RO.</td></tr>`;
+
+    outHTML += `<tr><td colspan="2" class="plan-section-title">1. Stan przed podmianą</td></tr>`;
+    outHTML += `<tr><td class="label-col">Testy</td><td>
+        <span class="plan-pill">NO3 ${rawCurrent.no3.toFixed(2)} mg/l</span>
+        <span class="plan-pill">PO4 ${rawCurrent.po4.toFixed(2)} mg/l</span>
+        <span class="plan-pill">K ${rawCurrent.k.toFixed(2)} mg/l</span>
+        <span class="plan-pill">Fe ${rawCurrent.fe.toFixed(2)} mg/l</span>
+    </td></tr>`;
+
+    outHTML += `<tr><td colspan="2" class="plan-section-title">2. Stan po podmianie RO</td></tr>`;
+    outHTML += `<tr><td class="label-col">Po podmianie</td><td>
+        <span class="plan-pill">NO3 ${afterWC.no3.toFixed(2)} mg/l</span>
+        <span class="plan-pill">PO4 ${afterWC.po4.toFixed(2)} mg/l</span>
+        <span class="plan-pill">K ${afterWC.k.toFixed(2)} mg/l</span>
+        <span class="plan-pill">Fe ${afterWC.fe.toFixed(2)} mg/l</span>
+    </td></tr>`;
+
+    outHTML += `<tr><td colspan="2" class="plan-section-title">3. Brak do celu</td></tr>`;
+    outHTML += `<tr><td class="label-col">Do uzupełnienia</td><td>
+        <span class="plan-pill">NO3 ${deficit.no3.toFixed(2)} mg/l</span>
+        <span class="plan-pill">PO4 ${deficit.po4.toFixed(2)} mg/l</span>
+        <span class="plan-pill">K ${deficit.k.toFixed(2)} mg/l</span>
+        <span class="plan-pill">Fe ${deficit.fe.toFixed(2)} mg/l</span>
+    </td></tr>`;
+
+    outHTML += `<tr><td colspan="2" class="plan-section-title">4. Plan dawkowania</td></tr>`;
+    outHTML += `<tr><td class="label-col"><span class="plan-day">Sobota po podmianie</span></td><td>
+        <span class="plan-dose">N ${d1.no3.toFixed(2)} ml</span>
+        <span class="plan-dose">PO4 ${d1.po4.toFixed(2)} ml</span>
+        <span class="plan-dose">K ${d1.k.toFixed(2)} ml</span>
+        <span class="plan-dose">Fe ${d1.fe.toFixed(2)} ml</span>
+        <span class="plan-dose">Micro ${micro1} kropli</span>
+    </td></tr>`;
+    outHTML += `<tr><td class="label-col"><span class="plan-day">Wtorek</span></td><td>
+        <span class="plan-dose">N ${d2.no3.toFixed(2)} ml</span>
+        <span class="plan-dose">PO4 ${d2.po4.toFixed(2)} ml</span>
+        <span class="plan-dose">K ${d2.k.toFixed(2)} ml</span>
+        <span class="plan-dose">Fe ${d2.fe.toFixed(2)} ml</span>
+        <span class="plan-dose">Micro ${micro2} kropli</span>
+    </td></tr>`;
+    outHTML += `<tr><td class="label-col"><span class="plan-day">Czwartek</span></td><td>
+        <span class="plan-dose">N ${d3.no3.toFixed(2)} ml</span>
+        <span class="plan-dose">PO4 ${d3.po4.toFixed(2)} ml</span>
+        <span class="plan-dose">K ${d3.k.toFixed(2)} ml</span>
+        <span class="plan-dose">Fe ${d3.fe.toFixed(2)} ml</span>
+        <span class="plan-dose">Micro ${micro3} kropli</span>
+    </td></tr>`;
+
+    outHTML += `<tr><td class="label-col">Razem tydzień</td><td class="plan-total">
+        <span class="plan-pill">N ${weekly.no3.toFixed(2)} ml</span>
+        <span class="plan-pill">PO4 ${weekly.po4.toFixed(2)} ml</span>
+        <span class="plan-pill">K ${weekly.k.toFixed(2)} ml</span>
+        <span class="plan-pill">Fe ${weekly.fe.toFixed(2)} ml</span>
+        <span class="plan-pill">Micro ${microWeekly.toFixed(0)} kropli</span><br>
+        Podział dawek: 50% sobota po podmianie, 25% wtorek, 25% czwartek.
+    </td></tr>`;
+
+    if(alerts.length){
+        outHTML += `<tr><td colspan="2" class="alert-box">⚠️ ${alerts.join('<br>⚠️ ')}</td></tr>`;
     }
-    outHTML += '</table>';
+    outHTML += '</table></div>';
     document.getElementById(`out_${id}`).innerHTML = outHTML;
+    updateLastActionInfo(id, 'test');
+    if(wc > 0) updateLastActionInfo(id, 'waterchange');
     savePlanState(id, { html: outHTML, status: (document.getElementById(`plan_status_${id}`)?.textContent || '') });
 
     let history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
@@ -427,6 +620,8 @@ function clearResults(id){
 function clearHistory(id){
     localStorage.removeItem(id+'_history');
     document.getElementById(`history_${id}`).innerHTML='<b>Historia 30 dni:</b><br>';
+    renderMetaInfo(id);
+    renderTrendInfo(id);
 }
 
 function showTab(id){
@@ -515,7 +710,10 @@ function createTankUI(id, volume){
     <button onclick="applyCustomPreset('${id}')">Ustaw ten plan</button>
     <button onclick="resetToOptimalSettings('${id}')">Powrót do optymalnych ustawień</button>
     </div>` : ``}
-    <button onclick="calc('${id}')">Oblicz</button>
+    <div class="status-bar" id="meta_${id}">Ostatni test: —<br>Ostatnia podmiana: —</div>
+    <div class="trend-box" id="trend_${id}">Trend: NO3 — • PO4 — • K — • Fe —</div>
+    <button class="primary-btn" onclick="calc('${id}')">Oblicz</button>
+    <button onclick="saveMeasurementOnly('${id}')">Zapisz sam pomiar</button>
     <button onclick="clearHistory('${id}')">Wyczyść historię</button>
     <div class="result" id="out_${id}"></div>
     <div class="history-box" id="history_${id}"><b>Historia 30 dni:</b><br></div>
@@ -530,6 +728,8 @@ Object.keys(tanks).forEach(id=>{
     updateParamColors(id);
     restorePlanView(id);
     renderHistory(id);
+    renderTrendInfo(id);
+    renderMetaInfo(id);
 });
 </script>
 
