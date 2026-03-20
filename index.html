@@ -93,7 +93,7 @@ const techProfiles = {
 const customPresets = {
     t1: {
         mode: 'high',
-        target: { no3: 15, po4: 1.2, k: 18, fe: 0.10 },
+        target: { no3: 12, po4: 0.8, k: 16, fe: 0.08 },
         waterChange: 70,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny plan wg testów przed podmianą i podmiany RO dla 240L.'
@@ -484,10 +484,15 @@ function calc(id){
     const preset = (typeof customPresets !== 'undefined') ? customPresets[id] : null;
 
     let weekly = {}, d1 = {}, d2 = {}, d3 = {}, deficit = {};
-    let microWeekly = profile.microFactor * v / 100;
-    let micro1 = Math.round(microWeekly * 0.34);
-    let micro2 = Math.round(microWeekly * 0.33);
-    let micro3 = Math.round(microWeekly * 0.33);
+    let microDaily = profile.microFactor * v / 100;
+    let microWeekly = microDaily * 7;
+    if(id === 't1') microWeekly = 80;
+    if(id === 't2') microWeekly = 0;
+    if(id === 't3') microWeekly = 16;
+    if(id === 't4') microWeekly = 5;
+    let micro1 = Math.round(microWeekly * 0.5);
+    let micro2 = Math.round(microWeekly * 0.25);
+    let micro3 = Math.round(microWeekly * 0.25);
 
     params.forEach(p=>{
         weekly[p] = dose(target[p], afterWC[p], strength[p], v);
@@ -693,14 +698,14 @@ function createTankUI(id, volume){
     </div>    ${['t1','t2','t3','t4'].includes(id) ? `<div class="box" id="plan_${id}">
     <b>Plan nawożenia dla tego akwarium</b><br>
     <span style="color:#aaa;">${
-        id === 't1' ? 'High tech z CO2 i aktywnym podłożem.' :
+        id === 't1' ? 'High tech z CO2, aktywnym podłożem i sporą obsadą ryb.' :
         id === 't2' ? 'Super low tech z dużą obsadą i bardzo oszczędnym nawożeniem.' :
         id === 't3' ? 'Low tech na epifitach, bez CO2, z bardzo lekkim nawożeniem.' :
         'Młode akwarium na aktywnym podłożu, wymagające delikatnego startu.'
     }</span><br>
     <span style="color:#aaa;">Plan dynamiczny 3x w tygodniu.</span><br>
     <span style="color:#aaa;">${
-        id === 't1' ? 'Docelowe: NO3 15, PO4 1.2, K 18, Fe 0.10' :
+        id === 't1' ? 'Docelowe: NO3 12, PO4 0.8, K 16, Fe 0.08' :
         id === 't2' ? 'Docelowe: NO3 5, PO4 0.2, K 5, Fe 0.02' :
         id === 't3' ? 'Docelowe: NO3 6, PO4 0.25, K 8, Fe 0.03' :
         'Docelowe: NO3 8, PO4 0.4, K 10, Fe 0.03'
