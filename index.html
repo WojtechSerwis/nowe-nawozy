@@ -93,7 +93,7 @@ const techProfiles = {
 const customPresets = {
     t1: {
         mode: 'high',
-        target: { no3: 12, po4: 0.8, k: 16, fe: 0.08 },
+        target: { no3: 12, po4: 0.8, k: 16, fe: 0.10 },
         waterChange: 70,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny plan wg testów przed podmianą i podmiany RO dla 240L.'
@@ -107,14 +107,14 @@ const customPresets = {
     },
     t3: {
         mode: 'low',
-        target: { no3: 6, po4: 0.25, k: 8, fe: 0.03 },
+        target: { no3: 6, po4: 0.25, k: 8, fe: 0.07 },
         waterChange: 18,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny low tech dla epifitów: dawki liczone z testów przed podmianą i ilości podmienionej wody.'
     },
     t4: {
         mode: 'high',
-        target: { no3: 8, po4: 0.4, k: 10, fe: 0.03 },
+        target: { no3: 8, po4: 0.4, k: 10, fe: 0.06 },
         waterChange: 8,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny delikatny start dla młodego 26L: dawki liczone z testów przed podmianą i ilości podmienionej wody.'
@@ -342,6 +342,31 @@ function renderMetaInfo(id){
     el.innerHTML = `Ostatni test: ${meta.lastTest || '—'}<br>Ostatnia podmiana: ${meta.lastWaterChange || '—'}`;
 }
 
+
+function getMicroWeeklyDrops(id, profile, v){
+    let microDaily = profile.microFactor * v / 100;
+    let microWeekly = microDaily * 7;
+    if(id === 't1') microWeekly = 80;
+    if(id === 't2') microWeekly = 0;
+    if(id === 't3') microWeekly = 16;
+    if(id === 't4') microWeekly = 5;
+    return microWeekly;
+}
+
+function getAfMicroContribution(id, v, profile){
+    const dropsPerWeek = getMicroWeeklyDrops(id, profile, v);
+    const mlPerDrop = 4 / 56; // 4 ml / 100L / week = 56 drops / week at 8 drops/day
+    const ml = dropsPerWeek * mlPerDrop;
+
+    // Producer values: 1 ml / 10L raises:
+    // Fe 0.38 mg/l, K 8.16 mg/l
+    const fe = (ml * 0.38 * 10) / v;
+    const k = (ml * 8.16 * 10) / v;
+
+    return { dropsPerWeek, ml, fe, k };
+}
+
+
 function buildAlerts(afterWC, target, wc){
     const alerts = [];
     if(wc > 0) alerts.push(`Podmiana ${wc} l została uwzględniona w obliczeniach.`);
@@ -485,18 +510,28 @@ function calc(id){
 
     let weekly = {}, d1 = {}, d2 = {}, d3 = {}, deficit = {};
     let microDaily = profile.microFactor * v / 100;
-    let microWeekly = microDaily * 7;
-    if(id === 't1') microWeekly = 80;
-    if(id === 't2') microWeekly = 0;
-    if(id === 't3') microWeekly = 16;
-    if(id === 't4') microWeekly = 5;
+    let microWeekly = getMicroWeeklyDrops(id, profile, v);
     let micro1 = Math.round(microWeekly * 0.5);
     let micro2 = Math.round(microWeekly * 0.25);
     let micro3 = Math.round(microWeekly * 0.25);
+    const microContribution = getAfMicroContribution(id, v, profile);
 
     params.forEach(p=>{
         weekly[p] = dose(target[p], afterWC[p], strength[p], v);
         deficit[p] = Math.max(0, target[p] - afterWC[p]);
+    });
+
+    // AF Micro also contributes K and Fe, so reduce separate K / Iron dosing accordingly
+    if(weekly.k > 0){
+        const kMlCoveredByMicro = (microContribution.k * v) / (strength.k * 10);
+        weekly.k = Math.max(0, weekly.k - kMlCoveredByMicro);
+    }
+    if(weekly.fe > 0){
+        const feMlCoveredByMicro = (microContribution.fe * v) / (strength.fe * 10);
+        weekly.fe = Math.max(0, weekly.fe - feMlCoveredByMicro);
+    }
+
+    params.forEach(p=>{
         d1[p] = weekly[p] * 0.5;
         d2[p] = weekly[p] * 0.25;
         d3[p] = weekly[p] * 0.25;
@@ -563,7 +598,8 @@ function calc(id){
         <span class="plan-pill">K ${weekly.k.toFixed(2)} ml</span>
         <span class="plan-pill">Fe ${weekly.fe.toFixed(2)} ml</span>
         <span class="plan-pill">Micro ${microWeekly.toFixed(0)} kropli</span><br>
-        Podział dawek: 50% sobota po podmianie, 25% wtorek, 25% czwartek.
+        Podział dawek: 50% sobota po podmianie, 25% wtorek, 25% czwartek.<br>
+        <span class="plan-note">Uwzględniono wkład AF Micro do K i Fe. AF Micro wnosi tygodniowo około: K ${microContribution.k.toFixed(2)} mg/l, Fe ${microContribution.fe.toFixed(3)} mg/l.</span>
     </td></tr>`;
 
     if(alerts.length){
@@ -705,10 +741,10 @@ function createTankUI(id, volume){
     }</span><br>
     <span style="color:#aaa;">Plan dynamiczny 3x w tygodniu.</span><br>
     <span style="color:#aaa;">${
-        id === 't1' ? 'Docelowe: NO3 12, PO4 0.8, K 16, Fe 0.08' :
+        id === 't1' ? 'Docelowe: NO3 12, PO4 0.8, K 16, Fe 0.10' :
         id === 't2' ? 'Docelowe: NO3 5, PO4 0.2, K 5, Fe 0.02' :
-        id === 't3' ? 'Docelowe: NO3 6, PO4 0.25, K 8, Fe 0.03' :
-        'Docelowe: NO3 8, PO4 0.4, K 10, Fe 0.03'
+        id === 't3' ? 'Docelowe: NO3 6, PO4 0.25, K 8, Fe 0.07' :
+        'Docelowe: NO3 8, PO4 0.4, K 10, Fe 0.06'
     }</span><br>
     <span style="color:#aaa;">Dawki są liczone z testów wykonanych przed podmianą oraz ilości podmienionej wody.</span><br>
     <span id="plan_status_${id}" style="font-size:12px;color:#aaa;"></span><br>
