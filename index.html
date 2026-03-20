@@ -636,6 +636,7 @@ function renderHistory(id){
             k: h.k ?? 0,
             fe: h.fe ?? 0
         };
+        const hasPlan = h.plan3x && h.plan3x.d1 && h.plan3x.d2 && h.plan3x.d3;
 
         html += `<div class="history-entry"><b>${h.datetime}</b>`;
         html += `<table><tr><th>Parametr</th><th>Wynik badanej wody</th><th>Podmiana</th></tr>`;
@@ -643,7 +644,22 @@ function renderHistory(id){
         html += `<tr><td>💧 PO4</td><td>${Number(raw.po4 ?? 0).toFixed(2)} mg/l</td><td></td></tr>`;
         html += `<tr><td>🌿 K</td><td>${Number(raw.k ?? 0).toFixed(2)} mg/l</td><td></td></tr>`;
         html += `<tr><td>🔩 Fe</td><td>${Number(raw.fe ?? 0).toFixed(2)} mg/l</td><td></td></tr>`;
-        html += `</table></div>`;
+        html += `</table>`;
+
+        if(hasPlan){
+            html += `<table style="margin-top:8px;"><tr><th>Dzień</th><th>N</th><th>PO4</th><th>K</th><th>Fe</th><th>Micro</th></tr>`;
+            html += `<tr><td>Sobota</td><td>${Number(h.plan3x.d1.no3 ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d1.po4 ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d1.k ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d1.fe ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.micro1 ?? 0).toFixed(0)} kropli</td></tr>`;
+            html += `<tr><td>Wtorek</td><td>${Number(h.plan3x.d2.no3 ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d2.po4 ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d2.k ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d2.fe ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.micro2 ?? 0).toFixed(0)} kropli</td></tr>`;
+            html += `<tr><td>Czwartek</td><td>${Number(h.plan3x.d3.no3 ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d3.po4 ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d3.k ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.d3.fe ?? 0).toFixed(2)} ml</td><td>${Number(h.plan3x.micro3 ?? 0).toFixed(0)} kropli</td></tr>`;
+            html += `<tr><th>Razem tydzień</th><th>${Number(h.plan3x.weekly.no3 ?? 0).toFixed(2)} ml</th><th>${Number(h.plan3x.weekly.po4 ?? 0).toFixed(2)} ml</th><th>${Number(h.plan3x.weekly.k ?? 0).toFixed(2)} ml</th><th>${Number(h.plan3x.weekly.fe ?? 0).toFixed(2)} ml</th><th>${Number(h.micro ?? 0).toFixed(0)} kropli</th></tr></table>`;
+            if(h.mode){
+                html += `<div style="margin-top:6px;color:#aaa;font-size:12px;">Tryb: ${h.mode === 'high' ? 'High Tech' : 'Low Tech'}</div>`;
+            }
+        } else {
+            html += `<div style="margin-top:6px;color:#aaa;font-size:12px;">Brak zapisanego planu dawkowania dla tego wpisu.</div>`;
+        }
+
+        html += `</div>`;
     });
     const div = document.getElementById(`history_${id}`);
     div.innerHTML = html;
