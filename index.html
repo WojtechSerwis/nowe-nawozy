@@ -7,6 +7,7 @@
 body { font-family: Arial; max-width: 900px; margin: auto; background-color: #121212; color: #e0e0e0; }
 input { margin: 5px; background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #444; padding: 5px; width: 60px; box-sizing: border-box; direction: ltr; }
 .result, .history-box { margin-top: 28px; font-weight: bold; background: #181818; padding: 14px; border-radius: 10px; border: 1px solid #2b2b2b; }
+.history-box { max-height: 500px; overflow-y: auto; }
 button { background-color: #3a3a3a; color: white; border: none; padding: 8px 15px; margin: 5px; cursor: pointer; border-radius: 6px; }
 button:hover { background-color: #4a4a4a; }
 button.primary-btn { background-color: #2e7d32; }
@@ -94,21 +95,21 @@ const customPresets = {
     t1: {
         mode: 'high',
         target: { no3: 12, po4: 0.8, k: 16, fe: 0.10 },
-        waterChange: 70,
+        waterChange: 60,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny plan wg testów przed podmianą i podmiany RO dla 240L.'
     },
     t2: {
         mode: 'low',
         target: { no3: 5, po4: 0.2, k: 5, fe: 0.02 },
-        waterChange: 45,
+        waterChange: 40,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny super low tech: kalkulator bierze pod uwagę testy przed podmianą i ilość podmienionej wody.'
     },
     t3: {
         mode: 'low',
         target: { no3: 6, po4: 0.25, k: 8, fe: 0.07 },
-        waterChange: 18,
+        waterChange: 20,
         dosing3x: { label: 'Plan 3x w tygodniu', strategy: 'dynamic' },
         note: 'Dynamiczny low tech dla epifitów: dawki liczone z testów przed podmianą i ilości podmienionej wody.'
     },
@@ -187,8 +188,6 @@ function restorePlanView(id){
     }
 }
 
-
-
 function captureOriginalDefaults(id){
     params.forEach(p=>{
         const tEl = document.getElementById(`t${p}_${id}`);
@@ -257,9 +256,6 @@ function applyTechProfile(id, preserveManual = false){
     if(microInfo) microInfo.textContent = `${profile.microFactor} kropli/dzień na 100L`;
     updateParamColors(id);
 }
-
-
-
 
 function getTrendSymbol(curr, prev){
     if(prev === null || prev === undefined || isNaN(prev)) return '—';
@@ -342,7 +338,6 @@ function renderMetaInfo(id){
     el.innerHTML = `Ostatni test: ${meta.lastTest || '—'}<br>Ostatnia podmiana: ${meta.lastWaterChange || '—'}`;
 }
 
-
 function getMicroWeeklyDrops(id, profile, v){
     let microDaily = profile.microFactor * v / 100;
     let microWeekly = microDaily * 7;
@@ -353,28 +348,72 @@ function getMicroWeeklyDrops(id, profile, v){
     return microWeekly;
 }
 
-function getAfMicroContribution(id, v, profile){
-    const dropsPerWeek = getMicroWeeklyDrops(id, profile, v);
-    const mlPerDrop = 4 / 56; // 4 ml / 100L / week = 56 drops / week at 8 drops/day
+function getAfMicroContributionForDrops(dropsPerWeek, v){
+    const mlPerDrop = 4 / 56;
     const ml = dropsPerWeek * mlPerDrop;
 
-    // Producer values: 1 ml / 10L raises:
-    // Fe 0.38 mg/l, K 8.16 mg/l
     const fe = (ml * 0.38 * 10) / v;
     const k = (ml * 8.16 * 10) / v;
 
     return { dropsPerWeek, ml, fe, k };
 }
 
+function getAfMicroContribution(id, v, profile){
+    const dropsPerWeek = getMicroWeeklyDrops(id, profile, v);
+    return getAfMicroContributionForDrops(dropsPerWeek, v);
+}
 
-function buildAlerts(afterWC, target, wc){
+function calculateDynamicMicroPlan(id, v, profile, afterWC, target){
+    const recommendedDrops = getMicroWeeklyDrops(id, profile, v);
+    const perDrop = getAfMicroContributionForDrops(1, v);
+    const feDeficit = Math.max(0, target.fe - afterWC.fe);
+    const kDeficit = Math.max(0, target.k - afterWC.k);
+
+    let microWeekly = 0;
+
+    if(recommendedDrops > 0 && feDeficit > 0 && kDeficit > 0 && perDrop.fe > 0 && perDrop.k > 0){
+        const dropsByFe = feDeficit / perDrop.fe;
+        const dropsByK = kDeficit / perDrop.k;
+        microWeekly = Math.min(recommendedDrops, dropsByFe, dropsByK);
+    }
+
+    microWeekly = Math.max(0, Math.floor(microWeekly));
+
+    const contribution = getAfMicroContributionForDrops(microWeekly, v);
+    const remainingFeDeficit = Math.max(0, feDeficit - contribution.fe);
+    const remainingKDeficit = Math.max(0, kDeficit - contribution.k);
+
+    return {
+        recommendedDrops,
+        microWeekly,
+        contribution,
+        feDeficit,
+        kDeficit,
+        remainingFeDeficit,
+        remainingKDeficit
+    };
+}
+
+function buildAlerts(afterWC, target, wc, microPlan = null){
     const alerts = [];
     if(wc > 0) alerts.push(`Podmiana ${wc} l została uwzględniona w obliczeniach.`);
     if(target.k > 0 && afterWC.k > target.k * 1.2) alerts.push('K jest już wysokie — nie zwiększaj go bez potrzeby.');
     if(target.fe > 0 && afterWC.fe > target.fe * 1.2) alerts.push('Fe jest powyżej celu — uważaj z mikro i Iron Boost.');
     if(afterWC.po4 < Math.max(0.15, target.po4 * 0.5)) alerts.push('PO4 jest nisko po podmianie.');
     if(afterWC.no3 < Math.max(3, target.no3 * 0.5)) alerts.push('NO3 jest nisko po podmianie.');
+    if(microPlan){
+        if(microPlan.microWeekly <= 0 && microPlan.feDeficit <= 0) alerts.push('AF Micro ustawiono na 0 kropli, bo Fe po podmianie jest już na poziomie docelowym lub wyżej.');
+        else if(microPlan.microWeekly <= 0 && microPlan.kDeficit <= 0) alerts.push('AF Micro ustawiono na 0 kropli, bo K po podmianie jest już na poziomie docelowym lub wyżej.');
+        else if(microPlan.microWeekly < microPlan.recommendedDrops) alerts.push('AF Micro zostało ograniczone przez aktualne braki K i Fe, zamiast stałej dawki.');
+    }
     return alerts;
+}
+
+function saveHistoryEntry(id, entry){
+    let history = JSON.parse(localStorage.getItem(id + '_history') || '[]');
+    history.push(entry);
+    if(history.length > 30) history.shift();
+    localStorage.setItem(id + '_history', JSON.stringify(history));
 }
 
 function saveMeasurementOnly(id){
@@ -389,12 +428,9 @@ function saveMeasurementOnly(id){
         rawCurrent[p] = parseFloat(document.getElementById(`${p}_${id}`).value) || 0;
     });
 
-    let history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
     const now = new Date();
     const datetime = now.toLocaleDateString('pl-PL') + ' ' + now.toLocaleTimeString('pl-PL', {hour:'2-digit',minute:'2-digit'});
-    history.push({ datetime, wc, raw: rawCurrent });
-    if(history.length>30) history.shift();
-    localStorage.setItem(id+'_history', JSON.stringify(history));
+    saveHistoryEntry(id, { datetime, wc, raw: rawCurrent });
     saveAllSettings(id);
     updateLastActionInfo(id, 'test');
     if(wc > 0) updateLastActionInfo(id, 'waterchange');
@@ -468,12 +504,18 @@ function updateParamColors(id){
     params.forEach(p=>{
         const target = parseFloat(document.getElementById(`t${p}_${id}`)?.value) || 0;
         const el = document.getElementById(`${p}_${id}`);
+        if(!el) return;
+
         let val = parseFloat(el.value) || 0;
         el.className = '';
-        if(val < target*0.95) el.classList.add('low');
-        else if(val > target*1.1) el.classList.add('high');
+
+        if(val < target * 0.95) el.classList.add('low');
+        else if(val > target * 1.1) el.classList.add('high');
         else el.classList.add('correct');
-        if((p==='fe' && val>1) || (p==='k' && val>50)) el.classList.add('warning');
+
+        if((p === 'fe' && val > 1) || (p === 'k' && val > 50)) {
+            el.classList.add('warning');
+        }
     });
 }
 
@@ -506,30 +548,24 @@ function calc(id){
     const modeEl = document.getElementById(`tech_${id}`);
     const mode = modeEl ? modeEl.value : 'high';
     const profile = (typeof techProfiles !== 'undefined' ? techProfiles[mode] : null) || {label:'High Tech', microFactor:8};
-    const preset = (typeof customPresets !== 'undefined') ? customPresets[id] : null;
 
     let weekly = {}, d1 = {}, d2 = {}, d3 = {}, deficit = {};
-    let microDaily = profile.microFactor * v / 100;
-    let microWeekly = getMicroWeeklyDrops(id, profile, v);
-    let micro1 = Math.round(microWeekly * 0.5);
-    let micro2 = Math.round(microWeekly * 0.25);
-    let micro3 = Math.round(microWeekly * 0.25);
-    const microContribution = getAfMicroContribution(id, v, profile);
 
     params.forEach(p=>{
-        weekly[p] = dose(target[p], afterWC[p], strength[p], v);
         deficit[p] = Math.max(0, target[p] - afterWC[p]);
     });
 
-    // AF Micro also contributes K and Fe, so reduce separate K / Iron dosing accordingly
-    if(weekly.k > 0){
-        const kMlCoveredByMicro = (microContribution.k * v) / (strength.k * 10);
-        weekly.k = Math.max(0, weekly.k - kMlCoveredByMicro);
-    }
-    if(weekly.fe > 0){
-        const feMlCoveredByMicro = (microContribution.fe * v) / (strength.fe * 10);
-        weekly.fe = Math.max(0, weekly.fe - feMlCoveredByMicro);
-    }
+    const microPlan = calculateDynamicMicroPlan(id, v, profile, afterWC, target);
+    const microWeekly = microPlan.microWeekly;
+    const microContribution = microPlan.contribution;
+    const micro1 = Math.round(microWeekly * 0.5);
+    const micro2 = Math.round(microWeekly * 0.25);
+    const micro3 = Math.max(0, microWeekly - micro1 - micro2);
+
+    weekly.no3 = dose(target.no3, afterWC.no3, strength.no3, v);
+    weekly.po4 = dose(target.po4, afterWC.po4, strength.po4, v);
+    weekly.k = dose(target.k, afterWC.k + microContribution.k, strength.k, v);
+    weekly.fe = dose(target.fe, afterWC.fe + microContribution.fe, strength.fe, v);
 
     params.forEach(p=>{
         d1[p] = weekly[p] * 0.5;
@@ -538,7 +574,7 @@ function calc(id){
     });
 
     saveAllSettings(id);
-    const alerts = buildAlerts(afterWC, target, wc);
+    const alerts = buildAlerts(afterWC, target, wc, microPlan);
 
     let outHTML = '<div class="readable-plan"><table>';
     outHTML += `<tr><td class="label-col">Tryb nawożenia</td><td><span class="plan-pill">${profile.label}</span></td></tr>`;
@@ -599,7 +635,7 @@ function calc(id){
         <span class="plan-pill">Fe ${weekly.fe.toFixed(2)} ml</span>
         <span class="plan-pill">Micro ${microWeekly.toFixed(0)} kropli</span><br>
         Podział dawek: 50% sobota po podmianie, 25% wtorek, 25% czwartek.<br>
-        <span class="plan-note">Uwzględniono wkład AF Micro do K i Fe. AF Micro wnosi tygodniowo około: K ${microContribution.k.toFixed(2)} mg/l, Fe ${microContribution.fe.toFixed(3)} mg/l.</span>
+        <span class="plan-note">AF Micro jest liczone dynamicznie z braków K i Fe po podmianie. Kalkulator dobiera tyle kropli, ile można dodać bez przekroczenia bardziej ograniczającego parametru. W tym planie AF Micro wnosi tygodniowo około: K ${microContribution.k.toFixed(2)} mg/l, Fe ${microContribution.fe.toFixed(3)} mg/l. Po uwzględnieniu mikro zostaje do uzupełnienia: K ${microPlan.remainingKDeficit.toFixed(2)} mg/l, Fe ${microPlan.remainingFeDeficit.toFixed(3)} mg/l.</span>
     </td></tr>`;
 
     if(alerts.length){
@@ -611,16 +647,13 @@ function calc(id){
     if(wc > 0) updateLastActionInfo(id, 'waterchange');
     savePlanState(id, { html: outHTML, status: (document.getElementById(`plan_status_${id}`)?.textContent || '') });
 
-    let history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
     const now = new Date();
     const datetime = now.toLocaleDateString('pl-PL') + ' ' + now.toLocaleTimeString('pl-PL', {hour:'2-digit',minute:'2-digit'});
-    history.push({
+    saveHistoryEntry(id, {
         datetime, wc, raw: rawCurrent, adjusted: afterWC, target, mode,
         plan3x: {d1, d2, d3, micro1, micro2, micro3, weekly},
         micro: microWeekly.toFixed(0)
     });
-    if(history.length>30) history.shift();
-    localStorage.setItem(id+'_history', JSON.stringify(history));
 
     updateParamColors(id);
     renderHistory(id);
@@ -628,7 +661,7 @@ function calc(id){
 
 function renderHistory(id){
     const history = JSON.parse(localStorage.getItem(id+'_history') || '[]');
-    let html = '<b>Historia 30 dni:</b><br>';
+    let html = '<b>Historia 30 wpisów:</b><br>';
     history.slice().reverse().forEach(h=>{
         const raw = h.raw || {
             no3: h.no3 ?? 0,
@@ -674,9 +707,10 @@ function clearResults(id){
     saveAllSettings(id);
     savePlanState(id, { html: '', status: (document.getElementById(`plan_status_${id}`)?.textContent || '') });
 }
+
 function clearHistory(id){
     localStorage.removeItem(id+'_history');
-    document.getElementById(`history_${id}`).innerHTML='<b>Historia 30 dni:</b><br>';
+    document.getElementById(`history_${id}`).innerHTML='<b>Historia 30 wpisów:</b><br>';
     renderMetaInfo(id);
     renderTrendInfo(id);
 }
@@ -733,7 +767,7 @@ function createTankUI(id, volume){
     <b>Moc nawozów (mg/l)</b> <p style="font-size:12px;color:#aaa;">Wartości dla 10ml nawozu na 100L wody</p>
     <table style="text-align:left;">
       <tr><td>🧪 AF N Boost:</td><td><input id="sno3_${id}" value="9.5" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
-      <tr><td>💧 AF PO4 Boost:</td><td><input id="spo4_${id}" value="0.4"> mg/l</td></tr>
+      <tr><td>💧 AF PO4 Boost:</td><td><input id="spo4_${id}" value="0.4" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
       <tr><td>🌿 AF K Boost:</td><td><input id="sk_${id}" value="5" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
       <tr><td>🔩 AF Iron Boost:</td><td><input id="sfe_${id}" value="0.4" onchange="saveAllSettings('${id}')"> mg/l</td></tr>
       <tr><td>💊 AF Micro:</td><td><span id="microinfo_${id}">8 kropli/dzień na 100L</span></td></tr>
@@ -773,7 +807,7 @@ function createTankUI(id, volume){
     <button onclick="saveMeasurementOnly('${id}')">Zapisz sam pomiar</button>
     <button onclick="clearHistory('${id}')">Wyczyść historię</button>
     <div class="result" id="out_${id}"></div>
-    <div class="history-box" id="history_${id}"><b>Historia 30 dni:</b><br></div>
+    <div class="history-box" id="history_${id}"><b>Historia 30 wpisów:</b><br></div>
     `;
 }
 
